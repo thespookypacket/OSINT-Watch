@@ -1,0 +1,103 @@
+name: osint-watch
+x-app: &app
+  build:
+    context: .
+    dockerfile: backend/Dockerfile
+  restart: unless-stopped
+  env_file: .env
+  environment: &environment
+    WATCH_DATABASE_URL: postgresql://watch:${POSTGRES_PASSWORD:?Run python3 scripts/setup.py}@db:5432/watch
+    WATCH_SOURCE_CONFIG: /app/config/sources.yaml
+  volumes:
+    - ./config:/app/config:ro
+  depends_on:
+    db: {condition: service_healthy}
+  security_opt: [no-new-privileges:true]
+  cap_drop: [ALL]
+  logging:
+    driver: json-file
+    options: {max-size: 10m, max-file: '3'}
+
+services:
+  db:
+    image: postgis/postgis:16-3.5
+    platform: linux/amd64
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: watch
+      POSTGRES_USER: watch
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Run python3 scripts/setup.py}
+    volumes: [database:/var/lib/postgresql/data]
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -U watch -d watch']
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    shm_size: 256mb
+  api:
+    <<: *app
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+  worker:
+    <<: *app
+    command: [python, -m, osint_watch.worker]
+    depends_on:
+      api: {condition: service_healthy}
+    healthcheck:
+      test: [CMD, python, -m, osint_watch.worker_health]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+  enrichment-worker:
+    <<: *app
+    command: [python, -m, osint_watch.worker]
+    environment:
+      <<: *environment
+      WATCH_JOB_KINDS: summary,enrichment
+    depends_on:
+      api: {condition: service_healthy}
+  gis:
+    platform: linux/amd64
+    build: {context: ., dockerfile: deploy/gis.Dockerfile}
+    restart: unless-stopped
+    environment:
+      PYGEOAPI_CONFIG: /pygeoapi/local.config.yml
+      PYGEOAPI_OPENAPI: /pygeoapi/local.openapi.yml
+      WATCH_DATABASE_PASSWORD: ${WATCH_GIS_PASSWORD:?Run python3 scripts/setup.py}
+      WATCH_PUBLIC_URL: ${WATCH_PUBLIC_URL:-http://localhost:8080}
+    depends_on:
+      api: {condition: service_healthy}
+  web:
+    build: {context: ., dockerfile: frontend/Dockerfile}
+    restart: unless-stopped
+    ports: ['${WATCH_BIND:-127.0.0.1}:${WATCH_PORT:-8080}:8080']
+    depends_on:
+      api: {condition: service_healthy}
+      gis: {condition: service_started}
+    healthcheck:
+      test: [CMD, wget, -q, -O, /dev/null, http://127.0.0.1:8080/health]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+  spiderfoot:
+    profiles: [spiderfoot]
+    build: {context: ., dockerfile: deploy/spiderfoot.Dockerfile}
+    restart: unless-stopped
+    environment:
+      WATCH_SPIDERFOOT_TOKEN: ${WATCH_SPIDERFOOT_TOKEN:-}
+    volumes: [spiderfoot-data:/home/watch/.spiderfoot]
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+  ollama:
+    profiles: [ai]
+    image: ollama/ollama:0.6.8
+    restart: unless-stopped
+    volumes: [ollama-data:/root/.ollama]
+
+volumes:
+  database:
+  spiderfoot-data:
+  ollama-data:

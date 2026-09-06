@@ -1,0 +1,54 @@
+# Public feeds. Changing configuration does not overwrite operator enable/disable choices.
+sources:
+  - id: usgs
+    name: USGS Earthquakes
+    adapter: geojson
+    url: https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_week.geojson
+    category: earthquake
+    attribution: US Geological Survey
+    export_allowed: true
+    interval_seconds: 300
+  - id: nws
+    name: NWS Weather Alerts
+    adapter: geojson
+    url: https://api.weather.gov/alerts/active
+    category: severe_weather
+    attribution: NOAA National Weather Service
+    export_allowed: true
+    interval_seconds: 300
+    config:
+      params: {status: actual}
+  - id: nifc
+    name: NIFC Wildfire Perimeters
+    adapter: arcgis
+    url: https://services3.arcgis.com/T4QMspbfLg3qTGWY/ArcGIS/rest/services/WFIGS_Interagency_Perimeters_YearToDate/FeatureServer/0
+    category: wildfire_perimeter
+    attribution: NIFC / WFIGS interagency wildfire perimeter data
+    export_allowed: true
+    interval_seconds: 1800
+    config:
+      where: "attr_IncidentTypeCategory = 'WF' AND poly_DateCurrent >= CURRENT_TIMESTAMP - INTERVAL '14' DAY"
+  - id: firms
+    name: NASA FIRMS Hotspots
+    adapter: firms
+    url: https://firms.modaps.eosdis.nasa.gov/api/area/
+    category: satellite_hotspot
+    attribution: NASA LANCE FIRMS / NOAA-20 VIIRS
+    export_allowed: true
+    interval_seconds: 1800
+  - id: gdacs
+    name: GDACS Global Hazards
+    adapter: geojson
+    url: https://www.gdacs.org/gdacsapi/api/events/geteventlist/SEARCH
+    category: other_hazard
+    attribution: Global Disaster Alert and Coordination System (GDACS)
+    export_allowed: true
+    interval_seconds: 1800
+  - id: gdelt
+    name: GDELT Reported Unrest
+    adapter: gdelt
+    url: https://data.gdeltproject.org/gdeltv2/lastupdate.txt
+    category: reported_unrest
+    attribution: GDELT Project; underlying reporting belongs to linked publishers
+    export_allowed: true
+    interval_seconds: 900
